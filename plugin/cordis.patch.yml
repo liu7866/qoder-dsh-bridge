@@ -1,0 +1,6 @@
+# 注册 Qoder CN provider。与 dsh-workbuddy-connect 同一套机制：
+# insert 一个插件条目，插件内部通过 ctx.llm.registerAdapter 注册 provider，
+# 不依赖 profile 里的 llm-pi-ai 配置，也不需要 apiKeyEnv。
+- insert:
+    - id: llm-qoder
+      name: dsh-qoder-connect

@@ -1,0 +1,27 @@
+{
+  "name": "dsh-qoder-connect",
+  "displayName": "DSH Qoder Connect",
+  "description": "将 Qoder CN 账户的模型接入 DeepSeek Harness（经本地 CLI 代理，支持思考等级与限免标注）",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "lib/index.js",
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "exports": {
+    ".": "./lib/index.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml"
+  ],
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "qoder",
+    "model-provider"
+  ],
+  "license": "MIT"
+}
