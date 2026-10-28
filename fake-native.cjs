@@ -30,8 +30,8 @@ function toolUse(name, index, args) {
   return { type: 'tool_use', id: 'native-tool-' + index, name, input: args }
 }
 function askTools(names) {
-  const blocks = names.map((name, i) => toolUse('bridge_t_' + i, i + 1,
-    mode === 'invalid-arguments' ? {} : { path: 'demo' + (i + 1) + '.txt' }))
+  const blocks = names.map((name, i) => toolUse(name === 'run_code' ? name : 'bridge_t_' + i, i + 1,
+    mode === 'invalid-arguments' ? {} : name === 'run_code' ? { code: 'text("SAFE")', description: 'Synthetic test' } : { path: 'demo' + (i + 1) + '.txt' }))
   emit({ type: 'assistant', message: { role: 'assistant', content: blocks } })
   names.forEach((name, i) => {
     const id = 'mcp-call-' + (i + 1)
@@ -44,6 +44,7 @@ function user() {
   if (mode === 'wait' || mode === 'timeout') return
   if (mode === 'null') { emit(null); emit({ type: 'assistant', message: { content: [null] } }); assistant('safe after malformed events'); return result('safe after malformed events') }
   if (mode === 'tool') return askTools(['read_file'])
+  if (mode === 'run-code') return askTools(['run_code'])
   if (mode === 'invalid-arguments') return askTools(['read_file'])
   if (mode === 'parallel-tools') return askTools(['read_file', 'write_file'])
   if (mode === 'unknown-tool') return askTools(['not_declared'])
@@ -89,6 +90,7 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
   if (message.type === 'control_request' && message.request?.subtype === 'initialize') {
     initializeId = message.request_id
     if (mode === 'startup-timeout') return
+    if (mode === 'run-code' && message.request.sdkMcpToolOverrides?.dsh?.run_code?.exposedName !== 'run_code') return failure('run_code must be exposed by its DSH name')
     if (!message.request.sdkMcpServers?.length) return emit({ type: 'control_response', response: { subtype: 'success', request_id: initializeId, response: {} } })
     return mcp('mcp-init', 1, 'initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'fake-qoder', version: '1' } })
   }

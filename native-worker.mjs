@@ -67,7 +67,9 @@ export class NativeWorker {
     state.timer = setTimeout(() => this.abort(Error('Qoder initialization timed out')), this.timeout)
     const initialize = () => {
       try {
-        const overrides = Object.fromEntries(this.tools.map((t, i) => [t.name, { exposedName: 'bridge_t_' + i, alwaysLoad: true }]))
+        // DSH's system instructions refer to run_code by name; preserve that
+        // reserved host transport name while keeping other tools isolated.
+        const overrides = Object.fromEntries(this.tools.map((t, i) => [t.name, { exposedName: t.name === 'run_code' ? t.name : 'bridge_t_' + i, alwaysLoad: true }]))
         this.write({ type: 'control_request', request_id: 'bridge_init', request: { subtype: 'initialize',
           systemPrompt: this.systemPrompt || 'You are a helpful assistant. Follow the client request.', includePartialMessages: this.includePartialMessages !== false,
           sdkMcpServers: this.tools.length ? ['dsh'] : [], sdkMcpToolOverrides: { dsh: overrides } } })

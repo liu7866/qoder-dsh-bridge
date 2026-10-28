@@ -2,7 +2,7 @@
 import http from 'node:http'
 import { spawn } from 'node:child_process'
 import { NativeWorker, buildLaunchArgs } from './native-worker.mjs'
-import { nextPromotionBoundary, sanitizeQuota, UsageLedger } from './bridge-support.mjs'
+import { nextPromotionBoundary, sanitizeQuota, UsageLedger, matchToolResults } from './bridge-support.mjs'
 import { randomUUID, timingSafeEqual, createHash, createHmac } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import fs from 'node:fs'
@@ -461,10 +461,13 @@ const server = http.createServer((req, res) => {
       let tail = fresh ? messages.slice(first) : messages.slice(w.history.length)
       let toolResults
       if (!fresh && w.waiting.size) {
-        const results = tail.filter(m => m.role === 'tool')
-        if (results.length === tail.length && results.length === w.waiting.size && results.every(m => w.waiting.has(m.tool_call_id)))
-          toolResults = new Map(results.map(m => [m.tool_call_id, { text: m.content, images: m.images || [] }]))
-        else {
+        toolResults = matchToolResults(tail, w.waiting)
+        if (!toolResults) {
+          const results = tail.filter(m => m.role === 'tool')
+          log('tool result mismatch: pending=' + w.waiting.size + ' results=' + results.length +
+            ' matched=' + results.filter(m => w.waiting.has(m.tool_call_id)).length +
+            ' extra_user=' + tail.filter(m => m.role === 'user').length +
+            ' extra_other=' + tail.filter(m => m.role !== 'user' && m.role !== 'tool').length)
           remove(w)
           w = acquire(key, MODELS[model], effort, maxTokens, messages, systemPrompt, effectiveTools, standbyKind, 'tool-results-changed', !!payload.stream)
           fresh = true; tail = messages.slice(first)

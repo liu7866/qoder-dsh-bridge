@@ -6,7 +6,7 @@
   "engines": { "node": ">=22.19" },
   "scripts": {
     "start": "node qoder-cli-proxy.mjs",
-    "test": "node --test test-native-worker.mjs test-support.mjs test-catalog.mjs && node test-http.cjs && node test-standby.cjs && node test-manager.cjs"
+    "test": "node --test test-native-worker.mjs test-support.mjs test-catalog.mjs && node test-http.cjs && node test-http-tool.cjs && node test-standby.cjs && node test-manager.cjs"
   },
   "dependencies": { "ajv": "8.20.0" }
 }

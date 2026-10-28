@@ -3,7 +3,18 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { nextPromotionBoundary, sanitizeQuota, UsageLedger } from './bridge-support.mjs'
+import { nextPromotionBoundary, sanitizeQuota, UsageLedger, matchToolResults } from './bridge-support.mjs'
+
+test('DSH tool result image wrapper is matched without accepting unrelated history edits', () => {
+  const image = { type: 'image', source: { media_type: 'image/png', data: 'aGVsbG8=' } }
+  const waiting = new Map([['call_1', {}]])
+  const result = { role: 'tool', tool_call_id: 'call_1', content: 'done' }
+  const wrapper = { role: 'user', content: 'Attached image(s) from tool result:', images: [image] }
+  assert.deepEqual(matchToolResults([result, wrapper], waiting).get('call_1'), { text: 'done', images: [image] })
+  assert.equal(matchToolResults([result, { ...wrapper, content: 'different user message' }], waiting), null)
+  assert.equal(matchToolResults([{ ...result, tool_call_id: 'other' }], waiting), null)
+  assert.equal(matchToolResults([result, result], new Map([['call_1', {}], ['call_2', {}]])), null)
+})
 
 test('promotion boundary uses the advertised timezone across midnight', () => {
   const models = [{ promotion: { timezone: 'Asia/Shanghai', window_start: '22:00', window_end: '08:00' } }]

@@ -9,3 +9,4 @@ token
 .http-test-*/
 .standby-test-*/
 .manager-test-*/
+.tool-test-*/

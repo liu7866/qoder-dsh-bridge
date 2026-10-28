@@ -4,6 +4,21 @@ import { createHmac, randomUUID } from 'node:crypto'
 const numeric = value => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined
 const short = value => typeof value === 'string' && value.length <= 80 ? value : undefined
 
+// pi-ai moves images from tool results into this exact following user message.
+export function matchToolResults(tail, waiting) {
+  const results = tail.filter(message => message.role === 'tool')
+  if (results.length !== waiting.size || new Set(results.map(m => m.tool_call_id)).size !== results.length ||
+      results.some(m => !waiting.has(m.tool_call_id))) return null
+  const extras = tail.filter(message => message.role !== 'tool')
+  let attachment
+  if (extras.length) {
+    if (extras.length !== 1 || results.length !== 1 || tail.at(-1) !== extras[0] || extras[0].role !== 'user' ||
+        extras[0].content !== 'Attached image(s) from tool result:' || !extras[0].images?.length) return null
+    attachment = extras[0].images
+  }
+  return new Map(results.map(m => [m.tool_call_id, { text: m.content, images: [...(m.images || []), ...(attachment || [])] }]))
+}
+
 // Refresh at upstream-declared local-time boundaries, but never calculate prices ourselves.
 export function nextPromotionBoundary(models, now = Date.now()) {
   const clocks = new Map()

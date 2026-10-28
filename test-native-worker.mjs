@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { NativeWorker } from './native-worker.mjs'
+import { NativeWorker, buildLaunchArgs } from './native-worker.mjs'
 
 const fakePath = fileURLToPath(new URL('./fake-native.cjs', import.meta.url))
 const defaultTools = [{ name: 'read_file', description: 'Read a text file', parameters: {
@@ -84,6 +84,22 @@ test('native tools/call pauses and resumes with the next turn toolResults', { ti
   const result = await native.turn({ toolResults: new Map([[call.id, 'FILE_TOKEN_42']]) })
   assert.equal(result.content, 'result: FILE_TOKEN_42')
   assert.deepEqual(result.calls, [])
+})
+
+test('DSH run_code keeps its name without enabling a standalone native CLI tool', { timeout: 5000 }, async t => {
+  const tools = [{ name: 'run_code', description: 'Execute a host program', parameters: {
+    type: 'object', properties: { code: { type: 'string' }, description: { type: 'string' } }, required: ['code', 'description']
+  } }]
+  const args = buildLaunchArgs({ model: 'test', tools })
+  const allowed = args[args.indexOf('--allowed-tools') + 1].split(',')
+  assert(allowed.includes('mcp__dsh__run_code'))
+  assert(!allowed.includes('run_code'))
+  const native = worker(t, 'run-code', { tools }); await native.start()
+  const request = await native.turn({ prompt: 'call run_code' })
+  assert.equal(request.calls[0].name, 'run_code')
+  assert.equal(request.calls[0].arguments.code, 'text("SAFE")')
+  const result = await native.turn({ toolResults: new Map([[request.calls[0].id, 'SAFE']]) })
+  assert.equal(result.content, 'result: SAFE')
 })
 
 test('tool result images are forwarded as MCP image content', { timeout: 5000 }, async t => {
