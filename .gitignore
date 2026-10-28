@@ -3,7 +3,9 @@ node_modules/
 model-catalog.json
 usage-records.jsonl
 last-route.json
+model-visibility.json
 token
 .env
 .http-test-*/
 .standby-test-*/
+.manager-test-*/

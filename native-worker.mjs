@@ -208,7 +208,14 @@ export class NativeWorker {
           if (!(toolResults instanceof Map) || toolResults.size !== this.waiting.size || [...this.waiting.keys()].some(id => !toolResults.has(id)))
             throw Error('Tool results do not match the pending Qoder calls')
           const batch = this.waiting; this.waiting = new Map(); this.expected = 0
-          for (const [id, item] of batch) this.respond(item.control, { content: [{ type: 'text', text: String(toolResults.get(id)) }] })
+          for (const [id, item] of batch) {
+            const result = toolResults.get(id)
+            const content = typeof result === 'string' ? [{ type: 'text', text: result }] : [
+              { type: 'text', text: result.text },
+              ...result.images.map(image => ({ type: 'image', data: image.source.data, mimeType: image.source.media_type }))
+            ]
+            this.respond(item.control, { content })
+          }
         } else {
           this.expected = 0
           this.write({ type: 'user', message: { role: 'user', content: [{ type: 'text', text: prompt || '' }, ...images] } })

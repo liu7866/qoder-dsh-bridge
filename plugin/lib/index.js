@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { catalogFromResponse, parseVisibility, visibleModels } from './catalog.js';
 
 import { PiAiAdapter } from '@deepseek-ai/dsh-llm-pi-ai';
 import { resolveRetryPolicy, resolveImageAttachmentAccess } from '@deepseek-ai/dsh-llm';
@@ -21,7 +22,7 @@ const TOKEN_FILE = process.env.QCP_TOKEN_FILE || path.join(os.homedir(), '.dsh',
 const FALLBACK_CONTEXT = Number(process.env.QODER_CONTEXT_WINDOW) || 200000;
 const EFFORTS = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
 const REFRESH_MS = 15000;
-const PRICE_MAX_AGE_MS = 70 * 60 * 1000;
+const VISIBILITY_FILE = path.join(path.dirname(TOKEN_FILE), 'model-visibility.json');
 
 function localToken() {
   let value;
@@ -74,44 +75,6 @@ const INERT_AUTH = {
   },
 };
 
-function positiveInteger(value, fallback) {
-  return Number.isSafeInteger(value) && value > 0 ? value : fallback;
-}
-
-function catalogFromResponse(payload) {
-  if (!Array.isArray(payload?.data) || payload.data.length === 0) {
-    throw new Error('代理未返回可用模型列表');
-  }
-  const seen = new Set();
-  const fetched = Date.parse(payload.catalog_updated_at || '');
-  const fresh = Number.isFinite(fetched) && fetched <= Date.now() + 60000 && Date.now() - fetched <= PRICE_MAX_AGE_MS;
-  const fallbackById = new Map(FALLBACK_MODELS.map(info => [info.id, info]));
-  return payload.data.map(entry => {
-    if (typeof entry?.id !== 'string' || !entry.id.trim() || seen.has(entry.id)) {
-      throw new Error('代理模型列表包含无效或重复的 ID');
-    }
-    seen.add(entry.id);
-    const fallback = fallbackById.get(entry.id);
-    const efforts = Array.isArray(entry.reasoning_efforts)
-      ? EFFORTS.filter(level => entry.reasoning_efforts.includes(level))
-      : fallback?.efforts || [];
-    return {
-      id: entry.id,
-      displayName: typeof entry.display_name === 'string' && entry.display_name.trim()
-        ? entry.display_name.trim() : fallback?.displayName || entry.id,
-      contextWindow: positiveInteger(entry.context_window, fallback?.contextWindow || FALLBACK_CONTEXT),
-      maxTokens: positiveInteger(entry.max_output_tokens, fallback?.maxTokens || 32768),
-      canDisable: typeof entry.can_disable_thinking === 'boolean'
-        ? entry.can_disable_thinking : fallback?.canDisable === true,
-      efforts,
-      supportsImages: entry.supports_images === true,
-      priceLabel: !fresh ? '额度待确认' : entry.is_free === true ? '当前免费' :
-        typeof entry.price_factor === 'number' && Number.isFinite(entry.price_factor) && entry.price_factor >= 0
-          ? `额度 ${entry.price_factor}×${entry.promotion?.active ? ' 活动中' : ''}` : '额度待确认',
-    };
-  }).sort((a, b) => a.id.localeCompare(b.id));
-}
-
 function toPiModel(info) {
   const thinkingLevelMap = { off: info.canDisable ? 'off' : null };
   for (const level of EFFORTS) thinkingLevelMap[level] = info.efforts.includes(level) ? level : null;
@@ -155,6 +118,7 @@ export function apply(ctx) {
   let disposed = false;
   let syncing = false;
   let lastSyncSucceeded;
+  let lastCatalog, hidden = new Set();
   const lifecycle = new AbortController();
   const provider = {
     ...createProvider({
@@ -209,29 +173,33 @@ export function apply(ctx) {
         signal: AbortSignal.any([lifecycle.signal, AbortSignal.timeout(5000)]),
       });
       if (!response.ok) throw new Error('代理模型接口 HTTP ' + response.status);
-      const nextInfo = catalogFromResponse(await response.json());
-      if (disposed) return;
-      const nextSignature = JSON.stringify(nextInfo);
-      const changed = nextSignature !== signature;
-      if (changed) {
-        modelInfo = nextInfo;
-        signature = nextSignature;
-        models = modelInfo.map(toPiModel);
-        profiles = new Map([[PROVIDER_ID, profile]]);
-        // The desktop selector caches its catalog until this registration announces a change.
-        if (typeof release.replace === 'function') release.replace([PROVIDER_ID]);
-        else ctx.emit?.('llm/adapters-updated');
-      }
-      if (changed || lastSyncSucceeded === false) {
-        ctx.logger.info('dsh-qoder-connect: 已同步代理模型能力，模型数 ' + models.length);
-      }
+      const payload = await response.json();
+      catalogFromResponse(payload, FALLBACK_MODELS, FALLBACK_CONTEXT);
+      lastCatalog = payload;
+      if (lastSyncSucceeded === false) ctx.logger.info('dsh-qoder-connect: 已重新连接代理');
       lastSyncSucceeded = true;
     } catch (error) {
-      if (!disposed && lastSyncSucceeded !== false) {
-        ctx.logger.info('dsh-qoder-connect: 模型同步失败，保留现有列表：' + error.message);
-      }
+      if (!disposed && lastSyncSucceeded !== false) ctx.logger.info('dsh-qoder-connect: 模型同步失败，保留现有列表：' + error.message);
       lastSyncSucceeded = false;
     } finally {
+      if (!disposed) {
+        try { hidden = parseVisibility(fs.readFileSync(VISIBILITY_FILE, 'utf8')); }
+        catch (error) { if (error.code === 'ENOENT') hidden = new Set(); }
+        const catalog = lastCatalog ? catalogFromResponse(lastCatalog, FALLBACK_MODELS, FALLBACK_CONTEXT) : FALLBACK_MODELS;
+        const nextInfo = visibleModels(catalog, hidden);
+        const nextSignature = JSON.stringify(nextInfo);
+        const changed = nextSignature !== signature;
+        if (changed) {
+          modelInfo = nextInfo;
+          signature = nextSignature;
+          models = modelInfo.map(toPiModel);
+          profiles = new Map([[PROVIDER_ID, profile]]);
+          // The desktop selector caches its catalog until this registration announces a change.
+          if (typeof release.replace === 'function') release.replace([PROVIDER_ID]);
+          else ctx.emit?.('llm/adapters-updated');
+          ctx.logger.info('dsh-qoder-connect: 已同步代理模型能力，模型数 ' + models.length);
+        }
+      }
       syncing = false;
     }
   }

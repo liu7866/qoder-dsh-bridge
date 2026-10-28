@@ -463,7 +463,7 @@ const server = http.createServer((req, res) => {
       if (!fresh && w.waiting.size) {
         const results = tail.filter(m => m.role === 'tool')
         if (results.length === tail.length && results.length === w.waiting.size && results.every(m => w.waiting.has(m.tool_call_id)))
-          toolResults = new Map(results.map(m => [m.tool_call_id, m.content]))
+          toolResults = new Map(results.map(m => [m.tool_call_id, { text: m.content, images: m.images || [] }]))
         else {
           remove(w)
           w = acquire(key, MODELS[model], effort, maxTokens, messages, systemPrompt, effectiveTools, standbyKind, 'tool-results-changed', !!payload.stream)

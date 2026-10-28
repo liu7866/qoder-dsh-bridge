@@ -86,6 +86,18 @@ test('native tools/call pauses and resumes with the next turn toolResults', { ti
   assert.deepEqual(result.calls, [])
 })
 
+test('tool result images are forwarded as MCP image content', { timeout: 5000 }, async t => {
+  const native = worker(t, 'tool')
+  await native.start()
+  const request = await native.turn({ prompt: 'inspect image' })
+  const call = request.calls[0]
+  const result = await native.turn({ toolResults: new Map([[call.id, { text: 'image result', images: [
+    { type: 'image', source: { media_type: 'image/png', data: 'aGVsbG8=' } }
+  ] }]]) })
+  assert.match(result.content, /image result/)
+  assert.match(result.content, /\[image:image\/png:aGVsbG8=\]/)
+})
+
 test('parallel native tools aggregate before return and resume together', { timeout: 5000 }, async t => {
   const native = worker(t, 'parallel-tools', { tools: [...defaultTools, { name: 'write_file', description: 'Write file', parameters: {
     type: 'object', properties: { path: { type: 'string' } }, required: ['path']

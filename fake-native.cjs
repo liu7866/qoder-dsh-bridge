@@ -117,8 +117,8 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
         return
       }
       const contents = rpc?.result?.content
-      if (!Array.isArray(contents) || !contents.every(x => x.type === 'text')) return failure('invalid tools/call result')
-      collected.push(contents.map(x => x.text).join('\n'))
+      if (!Array.isArray(contents) || !contents.every(x => x.type === 'text' || x.type === 'image' && typeof x.data === 'string' && typeof x.mimeType === 'string')) return failure('invalid tools/call result')
+      collected.push(contents.map(x => x.type === 'image' ? '[image:' + x.mimeType + ':' + x.data + ']' : x.text).join('\n'))
       pendingCalls.delete(id)
       if (!pendingCalls.size) {
         const text = 'result: ' + collected.join(' | ')
