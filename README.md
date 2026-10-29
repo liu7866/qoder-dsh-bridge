@@ -21,10 +21,11 @@ Windows 10/11、Node.js 22.19 或更高版本、已安装并登录的 Qoder CN C
 ```powershell
 npm install
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\init-token.ps1
-node .\qoder-cli-proxy.mjs
 ```
 
-代理默认仅监听 `127.0.0.1:18082`。CLI 默认位置为 `%USERPROFILE%\.qodersec\bin\qoderclicn.exe`；可用 `--cli` 或 `QCP_CLI` 指定实际路径。本地令牌位于 `%USERPROFILE%\.dsh\qoder-bridge-v2\token`，不要分享或提交。已有令牌会保留。代理前台运行期间打开 `http://127.0.0.1:18082/healthz` 可检查状态；关闭窗口会停止代理。
+双击 `启动Qoder代理.bat` 在后台启动守护进程；代理异常退出或连续健康检查失败时，守护进程会重试。重复启动不会创建多个同端口守护进程。可将 `守护Qoder代理.bat` 的快捷方式放入 Windows 启动文件夹，在登录后启动；守护进程自身退出时需要重新启动。日志位于项目目录的 `proxy.out.log` 和 `proxy.log`。
+
+代理默认仅监听 `127.0.0.1:18082`。CLI 默认位置为 `%USERPROFILE%\.qodersec\bin\qoderclicn.exe`；可用 `QCP_CLI` 指定实际路径。本地令牌位于 `%USERPROFILE%\.dsh\qoder-bridge-v2\token`，不要分享或提交。已有令牌会保留。打开 `http://127.0.0.1:18082/healthz` 可检查状态，端口被其他服务占用时守护日志会记录提示。需要前台调试时可直接运行 `node .\qoder-cli-proxy.mjs`，关闭窗口会停止该前台代理。
 
 ## 接入 DSH
 

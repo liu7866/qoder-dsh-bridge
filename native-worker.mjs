@@ -8,8 +8,23 @@ import Ajv2020 from 'ajv/dist/2020.js'
 let validators = [new Ajv({ strict: false, validateFormats: false }), new Ajv2020({ strict: false, validateFormats: false })]
 const schemaCache = new Map()
 
+function toolRoutes(tools) {
+  const names = new Set(tools.map(t => t.name))
+  const qualified = tools.map(t => 'mcp__dsh__' + t.name)
+  if (qualified.some((name, i) => names.has(name) && tools[i].name !== name))
+    throw Error('Ambiguous tool names overlap with MCP-qualified names')
+  const reserved = new Set([...names, ...qualified])
+  let next = 0
+  return tools.map((tool, i) => {
+    let alias
+    do { alias = 'bridge_t_' + next++ } while (reserved.has(alias))
+    reserved.add(alias)
+    return { name: tool.name, qualified: qualified[i], alias }
+  })
+}
+
 export function buildLaunchArgs({ model, effort, maxTokens, contextWindow, tools = [] }) {
-  const nativeNames = tools.flatMap((t, i) => ['mcp__dsh__' + t.name, 'bridge_t_' + i])
+  const nativeNames = toolRoutes(tools).flatMap(t => [t.qualified, t.alias])
   const args = ['-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--include-partial-messages',
     '--no-session-persistence', '--permission-mode', 'dont_ask', '--tools', nativeNames.join(','),
     '--strict-mcp-config', '--setting-sources', '', '--model', model]
@@ -27,9 +42,10 @@ export class NativeWorker {
     this.controls = new Map()
     this.lastSessionCredits = 0
     this.aliases = new Map()
+    this.routes = toolRoutes(this.tools)
     this.checks = new Map()
     for (const [index, tool] of this.tools.entries()) {
-      const alias = 'bridge_t_' + index
+      const alias = this.routes[index].alias
       this.aliases.set(alias, tool.name); this.aliases.set(tool.name, tool.name)
       this.aliases.set('mcp__dsh__' + tool.name, tool.name)
       const schema = tool.parameters || { type: 'object' }
@@ -69,7 +85,7 @@ export class NativeWorker {
       try {
         // DSH's system instructions refer to run_code by name; preserve that
         // reserved host transport name while keeping other tools isolated.
-        const overrides = Object.fromEntries(this.tools.map((t, i) => [t.name, { exposedName: t.name === 'run_code' ? t.name : 'bridge_t_' + i, alwaysLoad: true }]))
+        const overrides = Object.fromEntries(this.routes.map(t => [t.name, { exposedName: t.name === 'run_code' ? t.name : t.alias, alwaysLoad: true }]))
         this.write({ type: 'control_request', request_id: 'bridge_init', request: { subtype: 'initialize',
           systemPrompt: this.systemPrompt || 'You are a helpful assistant. Follow the client request.', includePartialMessages: this.includePartialMessages !== false,
           sdkMcpServers: this.tools.length ? ['dsh'] : [], sdkMcpToolOverrides: { dsh: overrides } } })

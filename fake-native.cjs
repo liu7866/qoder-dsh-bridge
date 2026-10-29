@@ -5,6 +5,7 @@ let initializeId
 let list = []
 let pendingCalls = new Map()
 let collected = []
+let overrides = {}
 const emit = value => process.stdout.write(JSON.stringify(value) + '\n')
 const failure = message => { process.stderr.write('FAKE PROTOCOL FAILURE: ' + message + '\n'); process.exit(3) }
 function mcp(requestId, id, method, params) {
@@ -47,6 +48,14 @@ function user() {
   if (mode === 'run-code') return askTools(['run_code'])
   if (mode === 'invalid-arguments') return askTools(['read_file'])
   if (mode === 'parallel-tools') return askTools(['read_file', 'write_file'])
+  if (mode === 'alias-collision') {
+    const alias = overrides.read_file?.exposedName
+    if (alias !== 'bridge_t_1' || overrides.bridge_t_0?.exposedName !== 'bridge_t_2') return failure('tool aliases collide')
+    const input = { path: 'demo1.txt' }
+    emit({ type: 'assistant', message: { role: 'assistant', content: [toolUse(alias, 1, input)] } })
+    pendingCalls.set('mcp-call-1', 'read_file')
+    return mcp('mcp-call-1', 3, 'tools/call', { name: alias, arguments: input })
+  }
   if (mode === 'unknown-tool') return askTools(['not_declared'])
   if (mode === 'stream') {
     emit({ type: 'stream_event', event: { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } } })
@@ -89,6 +98,7 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
   try { message = JSON.parse(line) } catch { return failure('parent wrote invalid JSON') }
   if (message.type === 'control_request' && message.request?.subtype === 'initialize') {
     initializeId = message.request_id
+    overrides = message.request.sdkMcpToolOverrides?.dsh || {}
     if (mode === 'startup-timeout') return
     if (mode === 'run-code' && message.request.sdkMcpToolOverrides?.dsh?.run_code?.exposedName !== 'run_code') return failure('run_code must be exposed by its DSH name')
     if (!message.request.sdkMcpServers?.length) return emit({ type: 'control_response', response: { subtype: 'success', request_id: initializeId, response: {} } })

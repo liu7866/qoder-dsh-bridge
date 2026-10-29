@@ -102,6 +102,26 @@ test('DSH run_code keeps its name without enabling a standalone native CLI tool'
   assert.equal(result.content, 'result: SAFE')
 })
 
+test('generated aliases avoid actual tool names across launch and MCP routing', { timeout: 5000 }, async t => {
+  const tools = [...defaultTools, { ...defaultTools[0], name: 'bridge_t_0' }]
+  const args = buildLaunchArgs({ model: 'test', tools })
+  const allowed = args[args.indexOf('--allowed-tools') + 1].split(',')
+  assert.deepEqual(allowed, ['mcp__dsh__read_file', 'bridge_t_1', 'mcp__dsh__bridge_t_0', 'bridge_t_2'])
+  const native = worker(t, 'alias-collision', { tools }); await native.start()
+  const request = await native.turn({ prompt: 'read demo' })
+  assert.equal(request.calls[0].name, 'read_file')
+  assert.equal(native.aliases.get('bridge_t_0'), 'bridge_t_0')
+  assert.equal(native.aliases.get('mcp__dsh__bridge_t_0'), 'bridge_t_0')
+  const result = await native.turn({ toolResults: new Map([[request.calls[0].id, 'SAFE']]) })
+  assert.equal(result.content, 'result: SAFE')
+})
+
+test('MCP-qualified tool names cannot collide with another actual name', () => {
+  const tools = [{ name: 'read_file' }, { name: 'mcp__dsh__read_file' }]
+  assert.throws(() => buildLaunchArgs({ model: 'test', tools }), /ambiguous/i)
+  assert.throws(() => new NativeWorker({ tools }), /ambiguous/i)
+})
+
 test('tool result images are forwarded as MCP image content', { timeout: 5000 }, async t => {
   const native = worker(t, 'tool')
   await native.start()
